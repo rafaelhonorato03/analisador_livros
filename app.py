@@ -1,12 +1,9 @@
-# --- 1. IMPORTAÇÕES ---
-# Bibliotecas padrão e de terceiros
 import time
 import streamlit as st
 import streamlit.components.v1 as components
-
 from analisador_personagens import AnalisadorDePersonagens
 
-# --- 2. CONFIGURAÇÃO DA PÁGINA E ESTILO ---
+# Configurando a página
 st.set_page_config(
     page_title="Analisador de Livros PDF",
     page_icon="📚",
@@ -14,7 +11,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 3. FUNÇÃO DE ANÁLISE COM CACHE ---
 @st.cache_data(show_spinner=False)
 def processar_livro(pdf_bytes, file_name):
     """
@@ -22,12 +18,11 @@ def processar_livro(pdf_bytes, file_name):
     Esta função é "cacheada": o Streamlit armazena o resultado e só a re-executa se os
     argumentos de entrada (os bytes do PDF ou seu nome) mudarem.
     """
-    # A mensagem de spinner será exibida do lado de fora da função cacheada
-    # para melhor controle da interface.
+    
     analisador = AnalisadorDePersonagens()
     analisador.analisar_livro(pdf_bytes)
 
-    # Gera os resultados estáticos (que não dependem de interação do usuário na interface)
+    # Gera os resultados estáticos
     resultados_visuais = {
         "fig_frequencia": analisador.gerar_grafico_frequencia(),
         "fig_dispersao": analisador.gerar_grafico_dispersao(),
@@ -37,7 +32,7 @@ def processar_livro(pdf_bytes, file_name):
     }
     return resultados_visuais
 
-# --- 4. INTERFACE PRINCIPAL DA APLICAÇÃO ---
+# Interface
 st.title("📚 Analisador de Personagens em Livros PDF")
 st.markdown("Faça o upload de um livro em formato PDF para analisar a frequência, evolução, relacionamentos e estrutura da narrativa.")
 
@@ -66,7 +61,7 @@ if uploaded_file is not None:
             end_time = time.time()
         st.success(f'Análise concluída em {end_time - start_time:.2f} segundos!')
 
-    # --- 5. EXIBIÇÃO DOS RESULTADOS ---
+    # Exibição
     # Recupera os resultados e o objeto analisador da memória da sessão
     resultados = st.session_state.analysis_results
     analisador = resultados["analisador_obj"]
