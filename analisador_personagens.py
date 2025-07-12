@@ -97,62 +97,67 @@ class AnalisadorDePersonagens:
 
     def analisar_livro(self, pdf_input, tamanho_chunk=100000):
         """
-        Processa um livro a partir de bytes de um arquivo PDF ou de um caminho de arquivo.
+        Processa um livro a partir de bytes de um arquivo PDF ou de um caminho de arquivo,
+        otimizado para baixo consumo de memória.
         
         Args:
             pdf_input (bytes or str): Os bytes do arquivo PDF ou o caminho para ele.
             tamanho_chunk (int): O tamanho dos blocos de texto a serem processados por vez.
         """
         self.resultados = self._inicializar_resultados()
-        texto_completo = ""
+        self.total_caracteres = 0
+        posicao_atual = 0
+
         try:
             if isinstance(pdf_input, bytes):
-                # Processa a partir de bytes (ideal para Streamlit)
                 doc_pdf = fitz.open(stream=pdf_input, filetype="pdf")
             else:
-                # Processa a partir de um caminho de arquivo (ideal para linha de comando)
                 doc_pdf = fitz.open(pdf_input)
             
-            with doc_pdf:
-                texto_completo = "".join([page.get_text() for page in doc_pdf])
-            
-            self.total_caracteres = len(texto_completo)
+            # Pre-calcula o tamanho total para normalização sem carregar tudo na memória
+            # Este passo ainda itera, mas apenas para obter o len(), o que é mais leve.
+            self.total_caracteres = sum(len(page.get_text()) for page in doc_pdf)
             if self.total_caracteres == 0:
                 raise ValueError("O PDF parece estar vazio ou não contém texto extraível.")
 
+            with doc_pdf:
+                # Processa página por página para manter o uso de memória baixo
+                for page_num, page in enumerate(doc_pdf):
+                    texto_pagina = page.get_text()
+                    if not texto_pagina:
+                        continue
+
+                    # Processa o texto da página com o modelo nlp
+                    doc_nlp = self.nlp(texto_pagina)
+                    
+                    for sent in doc_nlp.sents:
+                        personagens_na_frase = {
+                            self._limpar_nome(ent.text) for ent in sent.ents 
+                            if ent.label_ == "PER" and len(self._limpar_nome(ent.text).split()) < 4 and len(self._limpar_nome(ent.text)) > 2
+                        }
+                        
+                        if not personagens_na_frase:
+                            continue
+                        
+                        sentimento = self.sentiment_analyzer.polarity_scores(sent.text)['compound']
+                        
+                        for p in personagens_na_frase:
+                            # Calcula a posição relativa à posição inicial da página
+                            posicao_absoluta = posicao_atual + sent.start_char
+                            self.resultados["frequencia"][p] += 1
+                            self.resultados["posicoes"][p].append(posicao_absoluta)
+                            self.resultados["sentimentos"][p].append(sentimento)
+                        
+                        if len(personagens_na_frase) > 1:
+                            for par in combinations(sorted(list(personagens_na_frase)), 2):
+                                self.resultados["relacionamentos"][par] += 1
+                    
+                    # Atualiza a posição inicial para a próxima página
+                    posicao_atual += len(texto_pagina)
+                    gc.collect()
+
         except Exception as e:
             raise ValueError(f"Erro ao ler ou processar o arquivo PDF: {e}")
-
-        # Processamento em chunks para otimizar o uso de memória
-        for i in range(0, self.total_caracteres, tamanho_chunk):
-            chunk_texto = texto_completo[i:i + tamanho_chunk]
-            doc_nlp = self.nlp(chunk_texto)
-            
-            for sent in doc_nlp.sents:
-                personagens_na_frase = {
-                    self._limpar_nome(ent.text) for ent in sent.ents 
-                    if ent.label_ == "PER" and len(self._limpar_nome(ent.text).split()) < 4 and len(self._limpar_nome(ent.text)) > 2
-                }
-                
-                if not personagens_na_frase:
-                    continue
-                
-                # Análise de sentimento da frase
-                sentimento = self.sentiment_analyzer.polarity_scores(sent.text)['compound']
-                
-                # Armazenamento dos dados
-                for p in personagens_na_frase:
-                    posicao_absoluta = i + sent.start_char
-                    self.resultados["frequencia"][p] += 1
-                    self.resultados["posicoes"][p].append(posicao_absoluta)
-                    self.resultados["sentimentos"][p].append(sentimento)
-                
-                # Registro de relacionamentos (coocorrência na mesma frase)
-                if len(personagens_na_frase) > 1:
-                    for par in combinations(sorted(list(personagens_na_frase)), 2):
-                        self.resultados["relacionamentos"][par] += 1
-            
-            gc.collect() # Libera memória após processar cada chunk
 
     # --- MÉTODOS DE GERAÇÃO DE GRÁFICOS (RETORNANDO OBJETOS FIG/HTML) ---
     
