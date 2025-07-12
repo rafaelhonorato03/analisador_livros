@@ -4,15 +4,6 @@ import time
 import streamlit as st
 import streamlit.components.v1 as components
 
-# Importação da classe de análise principal.
-# É crucial que o arquivo 'analisador_personagens.py' esteja no mesmo diretório.
-# O nome do arquivo foi padronizado para 'analisador_personagens'.
-try:
-    from analisador_personagens import AnalisadorDePersonagens
-except ImportError:
-    st.error("Erro: O arquivo 'analisador_personagens.py' não foi encontrado. Certifique-se de que ele está no mesmo diretório que este script.")
-    st.stop()
-
 # --- 2. CONFIGURAÇÃO DA PÁGINA E ESTILO ---
 st.set_page_config(
     page_title="Analisador de Livros PDF",
