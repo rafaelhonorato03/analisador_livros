@@ -11,7 +11,6 @@ Dependências principais:
 - spacy: Para reconhecimento de entidades (personagens).
 - fitz (PyMuPDF): Para extração de texto de PDFs.
 - pandas, seaborn, matplotlib: Para manipulação de dados e criação de gráficos.
-- leia: Para análise de sentimentos em português.
 - networkx, pyvis: Para análise e visualização de redes de relacionamentos.
 - python-louvain: Para detecção de comunidades em redes.
 """
@@ -31,7 +30,6 @@ import fitz  # PyMuPDF
 import pandas as pd
 import numpy as np
 import networkx as nx
-from leia.leia import SentimentIntensityAnalyzer
 
 # Bibliotecas de visualização
 import seaborn as sns
@@ -55,7 +53,6 @@ class AnalisadorDePersonagens:
     def __init__(self):
         """Inicializa o analisador, carregando os modelos necessários."""
         self.nlp = self._carregar_modelo_spacy()
-        self.sentiment_analyzer = SentimentIntensityAnalyzer()
         self.resultados = self._inicializar_resultados()
         self.total_caracteres = 0
 
@@ -79,7 +76,6 @@ class AnalisadorDePersonagens:
         """Retorna a estrutura de dados para armazenar os resultados da análise."""
         return {
             "frequencia": Counter(),
-            "sentimentos": defaultdict(list),
             "posicoes": defaultdict(list),
             "relacionamentos": Counter()
         }
@@ -115,7 +111,6 @@ class AnalisadorDePersonagens:
                 doc_pdf = fitz.open(pdf_input)
             
             # Pre-calcula o tamanho total para normalização sem carregar tudo na memória
-            # Este passo ainda itera, mas apenas para obter o len(), o que é mais leve.
             self.total_caracteres = sum(len(page.get_text()) for page in doc_pdf)
             if self.total_caracteres == 0:
                 raise ValueError("O PDF parece estar vazio ou não contém texto extraível.")
@@ -139,14 +134,11 @@ class AnalisadorDePersonagens:
                         if not personagens_na_frase:
                             continue
                         
-                        sentimento = self.sentiment_analyzer.polarity_scores(sent.text)['compound']
-                        
                         for p in personagens_na_frase:
                             # Calcula a posição relativa à posição inicial da página
                             posicao_absoluta = posicao_atual + sent.start_char
                             self.resultados["frequencia"][p] += 1
                             self.resultados["posicoes"][p].append(posicao_absoluta)
-                            self.resultados["sentimentos"][p].append(sentimento)
                         
                         if len(personagens_na_frase) > 1:
                             for par in combinations(sorted(list(personagens_na_frase)), 2):
@@ -185,7 +177,11 @@ class AnalisadorDePersonagens:
         cores = plt.cm.viridis(np.linspace(0, 1, n_personagens))
         for i, personagem in enumerate(personagens_principais):
             ax = axes[i]
-            posicoes_norm = [(p / self.total_caracteres) * 100 for p in self.resultados["posicoes"].get(personagem, [])]
+            # Verifica se total_caracteres não é zero para evitar divisão por zero
+            if self.total_caracteres > 0:
+                posicoes_norm = [(p / self.total_caracteres) * 100 for p in self.resultados["posicoes"].get(personagem, [])]
+            else:
+                posicoes_norm = []
             
             if posicoes_norm:
                 ax.vlines(posicoes_norm, ymin=0, ymax=1, color=cores[i], alpha=0.7)
@@ -209,7 +205,11 @@ class AnalisadorDePersonagens:
         cores = plt.cm.tab10(np.linspace(0, 1, len(personagens_selecionados)))
         
         for i, personagem in enumerate(personagens_selecionados):
-            posicoes_norm = [(p / self.total_caracteres) * 100 for p in self.resultados["posicoes"].get(personagem, [])]
+            if self.total_caracteres > 0:
+                posicoes_norm = [(p / self.total_caracteres) * 100 for p in self.resultados["posicoes"].get(personagem, [])]
+            else:
+                posicoes_norm = []
+                
             if posicoes_norm:
                 sns.kdeplot(posicoes_norm, label=personagem, fill=True, alpha=0.3, color=cores[i], ax=ax, linewidth=2)
         
@@ -221,24 +221,6 @@ class AnalisadorDePersonagens:
         plt.tight_layout()
         return fig
         
-    def gerar_grafico_sentimentos(self, top_n=25):
-        """Gera um gráfico de barras com o sentimento médio associado a cada personagem."""
-        personagens_principais = [p for p, _ in self.resultados["frequencia"].most_common(top_n)]
-        sentimentos_medios = {p: np.mean(self.resultados["sentimentos"][p]) for p in personagens_principais if self.resultados["sentimentos"].get(p)}
-        
-        if not sentimentos_medios: return None
-        
-        df = pd.DataFrame(list(sentimentos_medios.items()), columns=['Personagem', 'Sentimento Médio']).sort_values('Sentimento Médio', ascending=False)
-        cores = ['#2ca02c' if s > 0.05 else '#d62728' if s < -0.05 else '#7f7f7f' for s in df['Sentimento Médio']]
-        
-        fig, ax = plt.subplots(figsize=(12, 8))
-        sns.barplot(x='Sentimento Médio', y='Personagem', data=df, palette=cores, ax=ax)
-        ax.set_title('Análise de Sentimento Médio por Personagem', fontsize=16)
-        ax.axvline(0, color='black', linewidth=0.8, linestyle='--')
-        ax.set_xlim(-1, 1)
-        plt.tight_layout()
-        return fig
-
     def _criar_grafo_base(self, top_n):
         """Helper para criar um grafo NetworkX com os personagens e relacionamentos."""
         personagens_principais = {p for p, _ in self.resultados["frequencia"].most_common(top_n)}
@@ -370,8 +352,7 @@ if __name__ == '__main__':
         # Gráficos Matplotlib
         for nome_metodo, nome_arquivo in [
             ('gerar_grafico_frequencia', 'frequencia.png'),
-            ('gerar_grafico_dispersao', 'dispersao.png'),
-            ('gerar_grafico_sentimentos', 'sentimentos.png')
+            ('gerar_grafico_dispersao', 'dispersao.png')
         ]:
             fig = getattr(analisador, nome_metodo)()
             if fig:
