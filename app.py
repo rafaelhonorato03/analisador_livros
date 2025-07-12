@@ -4,6 +4,8 @@ import time
 import streamlit as st
 import streamlit.components.v1 as components
 
+from analisador_personagens import AnalisadorDePersonagens
+
 # --- 2. CONFIGURAÇÃO DA PÁGINA E ESTILO ---
 st.set_page_config(
     page_title="Analisador de Livros PDF",
