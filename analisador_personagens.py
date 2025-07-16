@@ -13,6 +13,9 @@ import networkx as nx
 import seaborn as sns
 import matplotlib.pyplot as plt
 from pyvis.network import Network
+import ebooklib
+from ebooklib import epub
+from bsw import BeautifulSoup
 
 # Detecção de comunidades com a biblioteca louvain
 try:
@@ -65,6 +68,24 @@ class AnalisadorDePersonagens:
         padrao = r'\b(' + '|'.join(titulos) + r')\b'
         nome_limpo = re.sub(padrao, '', nome_texto, flags=re.IGNORECASE)
         return nome_limpo.strip()
+    
+    def _extrair_texto_epub(self, epub_input):
+        """ Extrai o conteúdo de um arquivo Epub"""
+        if isinstance(epub_input, bytes):
+            import io
+            livro = epub.read_epub(io.BytesIO(epub_input))
+        else:
+            livro = epub.read_epub(epub_input)
+
+        # Itera sobre os itens do livro para encontrar o conteúdo de texto
+        for item in livro.get_items():
+            if item.get_type() == ebooklib.ITEM_DOCUMENT:
+                # Usa o BeautifulSoup para extrair texto limpo do HTML/XHTML
+                soup = BeautifulSoup(item.get_content(), 'html.parser')
+                # Pega todo o texto, removendo tags HTML
+                texto_limpo = soup.get_text(separator='\n', strip=True)
+                if texto_limpo:
+                    yield texto_limpo
 
     def analisar_livro(self, pdf_input, tamanho_chunk=100000):
         """
@@ -79,52 +100,100 @@ class AnalisadorDePersonagens:
         self.total_caracteres = 0
         posicao_atual = 0
 
+        is_pdf = False
+        if isinstance(pdf_input, str):
+            is_pdf = pdf_input.lower().endswith('.pdf')
+        elif isinstance(pdf_input, bytes):
+            is_pdf = pdf_input.startswith(b'%PDF')
+        
         try:
-            if isinstance(pdf_input, bytes):
-                doc_pdf = fitz.open(stream=pdf_input, filetype="pdf")
-            else:
-                doc_pdf = fitz.open(pdf_input)
+            if is_pdf:
+                if isinstance(pdf_input, bytes):
+                    doc_pdf = fitz.open(stream=pdf_input, filetype="pdf")
+                else:
+                    doc_pdf = fitz.open(pdf_input)
             
-            # Pre-calcula o tamanho total para normalização sem carregar tudo na memória
-            self.total_caracteres = sum(len(page.get_text()) for page in doc_pdf)
-            if self.total_caracteres == 0:
-                raise ValueError("O PDF parece estar vazio ou não contém texto extraível.")
+                # Pre-calcula o tamanho total para normalização sem carregar tudo na memória
+                self.total_caracteres = sum(len(page.get_text()) for page in doc_pdf)
+                if self.total_caracteres == 0:
+                    raise ValueError("O PDF parece estar vazio ou não contém texto extraível.")
 
-            with doc_pdf:
-                # Processa página por página para manter o uso de memória baixo
-                for page_num, page in enumerate(doc_pdf):
-                    texto_pagina = page.get_text()
-                    if not texto_pagina:
-                        continue
-
-                    # Processa o texto da página com o modelo nlp
-                    doc_nlp = self.nlp(texto_pagina)
-                    
-                    for sent in doc_nlp.sents:
-                        personagens_na_frase = {
-                            self._limpar_nome(ent.text) for ent in sent.ents 
-                            if ent.label_ == "PER" and len(self._limpar_nome(ent.text).split()) < 4 and len(self._limpar_nome(ent.text)) > 2
-                        }
-                        
-                        if not personagens_na_frase:
+                with doc_pdf:
+                    # Processa página por página para manter o uso de memória baixo
+                    for page_num, page in enumerate(doc_pdf):
+                        texto_pagina = page.get_text()
+                        if not texto_pagina:
                             continue
-                        
-                        for p in personagens_na_frase:
-                            # Calcula a posição relativa à posição inicial da página
-                            posicao_absoluta = posicao_atual + sent.start_char
-                            self.resultados["frequencia"][p] += 1
-                            self.resultados["posicoes"][p].append(posicao_absoluta)
-                        
-                        if len(personagens_na_frase) > 1:
-                            for par in combinations(sorted(list(personagens_na_frase)), 2):
-                                self.resultados["relacionamentos"][par] += 1
+
+                        # Processa o texto da página com o modelo nlp
+                        doc_nlp = self.nlp(texto_pagina)
                     
-                    # Atualiza a posição inicial para a próxima página
-                    posicao_atual += len(texto_pagina)
-                    gc.collect()
+                        for sent in doc_nlp.sents:
+                            personagens_na_frase = {
+                                self._limpar_nome(ent.text) for ent in sent.ents 
+                                if ent.label_ == "PER" and len(self._limpar_nome(ent.text).split()) < 4 and len(self._limpar_nome(ent.text)) > 2
+                            }
+                        
+                            if not personagens_na_frase:
+                                continue
+                        
+                            for p in personagens_na_frase:
+                                # Calcula a posição relativa à posição inicial da página
+                                posicao_absoluta = posicao_atual + sent.start_char
+                                self.resultados["frequencia"][p] += 1
+                                self.resultados["posicoes"][p].append(posicao_absoluta)
+                        
+                            if len(personagens_na_frase) > 1:
+                                for par in combinations(sorted(list(personagens_na_frase)), 2):
+                                    self.resultados["relacionamentos"][par] += 1
+                    
+                        # Atualiza a posição inicial para a próxima página
+                        posicao_atual += len(texto_pagina)
+                        gc.collect()
+            
+            else:
+                # Calculo do tamanho total para normalização
+                textos_epub = list(self._extrair_texto_epub(pdf_input))
+                self.total_caracteres = sum(len(texto) for texto in textos_epub)
+                if self.total_caracteres == 0:
+                    raise ValueError("O EPUB parece estar vazio ou não contém texto extraível.")
+                
+                for texto_capitulo in textos_epub:
+                    self._processar_bloco_de_texto(texto_capitulo, posicao_atual)
+                    posicao_atual += len(texto_capitulo)
+
 
         except Exception as e:
-            raise ValueError(f"Erro ao ler ou processar o arquivo PDF: {e}")
+            raise ValueError(f"Erro ao ler ou processar o arquivo: {e}")
+        finally:
+            gc.collect()
+
+    def _processar_bloco_de_texto(self, texto, posicao_base):
+        """ Processa um bloco de texto com o modelo nlp para encontrar personagens."""
+
+        if not texto:
+            return
+        
+        doc_nlp = self.nlp(texto)
+
+        for sent in doc_nlp.sents:
+            personagens_na_frase = {
+                self._limpar_nome(ent.text) for ent in sent.ents
+                if ent.label_ == "PER" and len(self._limpar_nome(ent.text).split()) < 4 and len(self._limpar_nome(ent.text)) > 2
+                
+            }
+
+            if not personagens_na_frase:
+                continue
+
+            for p in personagens_na_frase:
+                posicao_absoluta = posicao_base + sent.star_char
+                self.resultados["frequencia"][p] += 1
+                self.resultados["posicoes"][p].append(posicao_absoluta)
+
+            if len(personagens_na_frase) > 1:
+                for par in combinations(sorted(list(personagens_na_frase)), 2):
+                    self.resultados["relacionamentos"][par] += 1
 
     # Gerando gráficos    
     def gerar_grafico_frequencia(self, top_n=25):

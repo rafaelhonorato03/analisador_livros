@@ -11,6 +11,9 @@ pyvis
 # Processamento de PDF
 PyMuPDF
 
+# Processamento de Epub
+ebooklib
+
 # Processamento de Linguagem Natural (PLN)
 spacy
 # Modelo spaCy em português

@@ -37,7 +37,7 @@ st.title("📚 Analisador de Personagens em Livros PDF")
 st.markdown("Faça o upload de um livro em formato PDF para analisar a frequência, evolução, relacionamentos e estrutura da narrativa.")
 
 # Widget para upload do arquivo
-uploaded_file = st.file_uploader("Arraste e solte seu arquivo PDF aqui ou clique para selecionar", type="pdf")
+uploaded_file = st.file_uploader("Arraste e solte seu arquivo PDF ou Epub aqui ou clique para selecionar", type=["pdf", "epub"])
 
 # O código a seguir só é executado se um arquivo for carregado
 if uploaded_file is not None:
