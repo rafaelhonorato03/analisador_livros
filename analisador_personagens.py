@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from pyvis.network import Network
 import ebooklib
 from ebooklib import epub
-from bsw import BeautifulSoup
+from bs4 import BeautifulSoup
 
 # Detecção de comunidades com a biblioteca louvain
 try:
