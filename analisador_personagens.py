@@ -1,21 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Módulo Unificado para Análise de Personagens em Textos.
-
-Este arquivo contém a classe `AnalisadorDePersonagens`, que encapsula toda a lógica
-de processamento de texto de PDFs, análise de NLP, e geração de visualizações.
-Foi projetado para ser importado por uma interface de usuário, como um script
-Streamlit ou um programa de linha de comando.
-
-Dependências principais:
-- spacy: Para reconhecimento de entidades (personagens).
-- fitz (PyMuPDF): Para extração de texto de PDFs.
-- pandas, seaborn, matplotlib: Para manipulação de dados e criação de gráficos.
-- networkx, pyvis: Para análise e visualização de redes de relacionamentos.
-- python-louvain: Para detecção de comunidades em redes.
-"""
-
-# --- IMPORTAÇÕES ---
 import os
 import re
 import gc
@@ -23,15 +5,11 @@ import time
 from itertools import combinations
 from collections import Counter, defaultdict
 from pathlib import Path
-
-# Bibliotecas de processamento e análise
 import spacy
-import fitz  # PyMuPDF
+import fitz
 import pandas as pd
 import numpy as np
 import networkx as nx
-
-# Bibliotecas de visualização
 import seaborn as sns
 import matplotlib.pyplot as plt
 from pyvis.network import Network
@@ -39,7 +17,7 @@ import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup
 
-# Módulo de detecção de comunidades
+# Detecção de comunidades com a biblioteca louvain
 try:
     import community.community_louvain as community_louvain
 except ImportError:
@@ -47,11 +25,10 @@ except ImportError:
     community_louvain = None
 
 
-# --- CLASSE DE LÓGICA DE ANÁLISE ---
-
+# Classes de lógica de análise
 class AnalisadorDePersonagens:
     """
-    Classe unificada para extrair, analisar e visualizar dados de personagens de um texto.
+    Classe para extrair, analisar e visualizar dados de personagens de um texto.
     """
     def __init__(self):
         """Inicializa o analisador, carregando os modelos necessários."""
@@ -69,8 +46,6 @@ class AnalisadorDePersonagens:
         try:
             return spacy.load(modelo)
         except OSError:
-            # Em um ambiente de deploy, este erro significa que o modelo
-            # não foi instalado corretamente via requirements.txt
             raise RuntimeError(
                 f"O modelo spaCy '{modelo}' não foi encontrado. "
                 f"Certifique-se de que ele está listado corretamente em seu arquivo requirements.txt."
@@ -231,8 +206,7 @@ class AnalisadorDePersonagens:
                 for par in combinations(sorted(list(personagens_na_frase)), 2):
                     self.resultados["relacionamentos"][par] += 1
 
-    # --- MÉTODOS DE GERAÇÃO DE GRÁFICOS (RETORNANDO OBJETOS FIG/HTML) ---
-    
+    # Gerando gráficos    
     def gerar_grafico_frequencia(self, top_n=25):
         """Gera um gráfico de barras com a frequência dos personagens."""
         mais_comuns = self.resultados["frequencia"].most_common(top_n)
@@ -403,56 +377,3 @@ class AnalisadorDePersonagens:
             stats[comm_id]['personagens'].sort(key=lambda x: x[1], reverse=True)
 
         return stats
-
-
-# --- BLOCO DE EXECUÇÃO (PARA TESTES E USO EM LINHA DE COMANDO) ---
-
-if __name__ == '__main__':
-    print("Executando o analisador em modo de linha de comando...")
-    
-    # Coloque o nome do arquivo PDF na mesma pasta ou o caminho completo
-    NOME_ARQUIVO_PDF = "dom_casmurro.pdf" 
-    
-    if not os.path.exists(NOME_ARQUIVO_PDF):
-        print(f"ERRO: Arquivo '{NOME_ARQUIVO_PDF}' não encontrado.")
-    else:
-        start_time = time.time()
-        
-        # 1. Inicia e executa a análise
-        analisador = AnalisadorDePersonagens()
-        print(f"Analisando '{NOME_ARQUIVO_PDF}'...")
-        analisador.analisar_livro(NOME_ARQUIVO_PDF)
-        print("Análise do texto concluída.")
-        
-        # 2. Gera e salva todos os resultados
-        output_dir = Path("resultados_analise")
-        output_dir.mkdir(exist_ok=True)
-        print(f"Salvando resultados na pasta: '{output_dir}'")
-        
-        # Gráficos Matplotlib
-        for nome_metodo, nome_arquivo in [
-            ('gerar_grafico_frequencia', 'frequencia.png'),
-            ('gerar_grafico_dispersao', 'dispersao.png')
-        ]:
-            fig = getattr(analisador, nome_metodo)()
-            if fig:
-                fig.savefig(output_dir / nome_arquivo)
-                plt.close(fig)
-        
-        # Grafos HTML
-        for nome_metodo, nome_arquivo in [
-            ('gerar_rede_relacionamentos', 'rede_relacionamentos.html'),
-            ('gerar_rede_comunidades', 'rede_comunidades.html')
-        ]:
-            html_content = getattr(analisador, nome_metodo)()
-            if html_content:
-                with open(output_dir / nome_arquivo, 'w', encoding='utf-8') as f:
-                    f.write(html_content)
-
-        # DataFrame CSV
-        df_pontes = analisador.analisar_pontes_narrativas()
-        if df_pontes is not None:
-            df_pontes.to_csv(output_dir / "personagens_ponte.csv", index=False)
-            
-        end_time = time.time()
-        print(f"\nAnálise completa em {end_time - start_time:.2f} segundos.")
