@@ -71,6 +71,22 @@ class AnalisadorDePersonagens:
     
     def _extrair_texto_epub(self, epub_input):
         """ Extrai o conteúdo de um arquivo Epub"""
+        
+        try:
+            book = epub.read_epub(epub_path_or_bytes)
+
+            items = book.get_items_of_type(ebooklib.ITEM_DOCUMENT)
+
+            for item in items:
+                content = item.get_content()
+                soup = BeautifulSoup(content, 'html.parser')
+                text = soup.get_text(separator='\n', strip=True)
+                if text:
+                    yield text
+        except Exception as e:
+            print(f'Alerta: Não foi possível processar item do EPUB')
+            yield ""
+
         if isinstance(epub_input, bytes):
             import io
             livro = epub.read_epub(io.BytesIO(epub_input))
@@ -161,10 +177,13 @@ class AnalisadorDePersonagens:
                 for texto_capitulo in textos_epub:
                     self._processar_bloco_de_texto(texto_capitulo, posicao_atual)
                     posicao_atual += len(texto_capitulo)
+                    gc.collect()
 
 
+        except ValueError as ve:
+            raise ve
         except Exception as e:
-            raise ValueError(f"Erro ao ler ou processar o arquivo: {e}")
+            ValueError(f"Erro ao ler ou processar o arquivo: {e}")
         finally:
             gc.collect()
 
@@ -187,7 +206,7 @@ class AnalisadorDePersonagens:
                 continue
 
             for p in personagens_na_frase:
-                posicao_absoluta = posicao_base + sent.star_char
+                posicao_absoluta = posicao_base + sent.start_char
                 self.resultados["frequencia"][p] += 1
                 self.resultados["posicoes"][p].append(posicao_absoluta)
 

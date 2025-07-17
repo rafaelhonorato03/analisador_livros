@@ -5,7 +5,7 @@ from analisador_personagens import AnalisadorDePersonagens
 
 # Configurando a página
 st.set_page_config(
-    page_title="Analisador de Livros PDF",
+    page_title="Analisador de Livros",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
