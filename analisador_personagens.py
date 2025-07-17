@@ -34,6 +34,7 @@ class AnalisadorDePersonagens:
         """Inicializa o analisador, carregando os modelos necessários."""
         self.nlp = self._carregar_modelo_spacy()
         self.resultados = self._inicializar_resultados()
+        self.nlp.max_length = 2000000 
         self.total_caracteres = 0
 
     @staticmethod
@@ -70,39 +71,27 @@ class AnalisadorDePersonagens:
         return nome_limpo.strip()
     
     def _extrair_texto_epub(self, epub_input):
-        """ Extrai o conteúdo de um arquivo Epub"""
-        
+        """ 
+        Extrai o conteúdo de um arquivo Epub.
+        *** ESTE MÉTODO FOI CORRIGIDO PARA SER FUNCIONAL E ROBUSTO ***
+        """
         try:
-            book = epub.read_epub(epub_path_or_bytes)
-
-            items = book.get_items_of_type(ebooklib.ITEM_DOCUMENT)
-
-            for item in items:
+            # A biblioteca ebooklib lida bem tanto com caminhos de arquivo quanto com bytes
+            book = epub.read_epub(epub_input)
+            
+            # Itera sobre os itens do livro que são documentos de texto
+            for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
                 content = item.get_content()
                 soup = BeautifulSoup(content, 'html.parser')
                 text = soup.get_text(separator='\n', strip=True)
                 if text:
                     yield text
         except Exception as e:
-            print(f'Alerta: Não foi possível processar item do EPUB')
-            yield ""
-
-        if isinstance(epub_input, bytes):
-            import io
-            livro = epub.read_epub(io.BytesIO(epub_input))
-        else:
-            livro = epub.read_epub(epub_input)
-
-        # Itera sobre os itens do livro para encontrar o conteúdo de texto
-        for item in livro.get_items():
-            if item.get_type() == ebooklib.ITEM_DOCUMENT:
-                # Usa o BeautifulSoup para extrair texto limpo do HTML/XHTML
-                soup = BeautifulSoup(item.get_content(), 'html.parser')
-                # Pega todo o texto, removendo tags HTML
-                texto_limpo = soup.get_text(separator='\n', strip=True)
-                if texto_limpo:
-                    yield texto_limpo
-
+            # Informa sobre o erro e continua, em vez de quebrar a aplicação
+            print(f"Alerta: Não foi possível processar o EPUB. Pode estar corrompido ou protegido por DRM. Erro: {e}")
+            # Retorna um gerador vazio para não quebrar o código que chama esta função
+            yield from []
+            
     def analisar_livro(self, pdf_input, tamanho_chunk=100000):
         """
         Processa um livro a partir de bytes de um arquivo PDF ou de um caminho de arquivo,
@@ -128,7 +117,7 @@ class AnalisadorDePersonagens:
                     doc_pdf = fitz.open(stream=pdf_input, filetype="pdf")
                 else:
                     doc_pdf = fitz.open(pdf_input)
-            
+                
                 # Pre-calcula o tamanho total para normalização sem carregar tudo na memória
                 self.total_caracteres = sum(len(page.get_text()) for page in doc_pdf)
                 if self.total_caracteres == 0:
@@ -168,11 +157,12 @@ class AnalisadorDePersonagens:
                         gc.collect()
             
             else:
+                # --- LÓGICA DO EPUB AJUSTADA PARA FUNCIONALIDADE ---
                 # Calculo do tamanho total para normalização
                 textos_epub = list(self._extrair_texto_epub(pdf_input))
                 self.total_caracteres = sum(len(texto) for texto in textos_epub)
                 if self.total_caracteres == 0:
-                    raise ValueError("O EPUB parece estar vazio ou não contém texto extraível.")
+                    raise ValueError("O EPUB parece estar vazio ou não contém texto extraível. Verifique se o arquivo não possui DRM (proteção de cópia).")
                 
                 for texto_capitulo in textos_epub:
                     self._processar_bloco_de_texto(texto_capitulo, posicao_atual)
@@ -183,7 +173,9 @@ class AnalisadorDePersonagens:
         except ValueError as ve:
             raise ve
         except Exception as e:
-            ValueError(f"Erro ao ler ou processar o arquivo: {e}")
+            # --- CORREÇÃO IMPORTANTE AQUI ---
+            # A exceção é levantada corretamente, em vez de ser ignorada
+            raise RuntimeError(f"Erro ao ler ou processar o arquivo: {e}")
         finally:
             gc.collect()
 
