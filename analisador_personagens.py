@@ -164,6 +164,7 @@ class AnalisadorDePersonagens:
 
 
         except Exception as e:
+            st.error(f"Erro detalhado ao ler ou processar o arquivo: {e}") # Adicione esta linha temporariamente
             raise ValueError(f"Erro ao ler ou processar o arquivo: {e}")
         finally:
             gc.collect()
